@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<h2>Texas Population Density, 2022</h2>
+<button id="colorButton">Change Color Scheme</button>
+<button id="countyButton">Toggle County Boundary</button>
+<style>
+
+.counties {
+  fill: none;
+}
+
+.states {
+  fill: none;
+  stroke-linejoin: round;
+}
+    
+/*Define how our tooltip looks like*/
+div.tooltip {
+  color: white;
+  position: absolute;
+  display:inline;
+  width: 150px;
+  height: 43px;
+  padding: 2px;
+  font: 12px sans-serif;
+  background: rgba(0,0,0,.8);
+  border: 2px solid black;
+  pointer-events: none;
+}
+
+
+</style>
+<svg width="960" height="600"></svg>
+<script src="//d3js.org/d3.v4.min.js"></script>
+<script src="https://d3js.org/d3-scale-chromatic.v1.min.js"></script>
+<script src="https://d3js.org/topojson.v2.min.js"></script>
+<script>
+
+var showCounties = true;
+var schemeRed = true;
+    
+    var color;
+    
+     if(schemeRed){
+    color = d3.scaleThreshold()
+    .domain([1, 10, 50, 200, 500, 1000, 2000, 4000])
+    .range(d3.schemeOrRd[9]);
+    }else{
+     color = d3.scaleThreshold()
+    .domain([1, 10, 50, 200, 500, 1000, 2000, 4000])
+    .range(d3.schemeBlues[9]);   
+    }
+    
+
+var svg = d3.select("svg"),
+    width = +svg.attr("width"),
+    height = +svg.attr("height");
+
+var densityById = d3.map();
+var nameById = d3.map();
+var stateById = d3.map();
+ 
+var div = d3
+  .select('body')
+  .append('div')
+  .attr('class', 'tooltip')
+  .style('opacity', 0);
+    
+    
+
+var projection = d3.geoAlbersUsa()
+    .scale(2500)
+    .translate([width / 2, height / 2 - 300]);
+
+var path = d3.geoPath()
+    .projection(projection);
+
+d3.queue()
+    .defer(d3.json, "us-10m.json")
+    .defer(d3.csv, "Population-Density By County.csv", function(d) { 
+    //console.log(parseInt(+d.id/1000));
+   // if(parseInt(+d.id/1000) == 48){
+    densityById.set(d.id, +d.density);
+    nameById.set(d.id, d.countyName);
+    stateById.set(d.id, d.state);
+//}                                              
+    })
+    .await(ready);
+
+function ready(error, us) {
+  if (error) throw error;
+    
+    if(schemeRed){
+    color = d3.scaleThreshold()
+    .domain([1, 10, 50, 200, 500, 1000, 2000, 4000])
+    .range(d3.schemeOrRd[9]);
+    }else{
+     color = d3.scaleThreshold()
+    .domain([1, 10, 50, 200, 500, 1000, 2000, 4000])
+    .range(d3.schemeBlues[9]);   
+    }
+    
+     var g = svg.append("g")
+    .attr("class", "key")
+    .attr("transform", "translate(0,40)");
+    
+    var x = d3.scaleSqrt()
+    .domain([0, 4500])
+    .rangeRound([440, 950]);
+    
+    g.selectAll("rect")
+  .data(color.range().map(function(d) {
+      d = color.invertExtent(d);
+      if (d[0] == null) d[0] = x.domain()[0];
+      if (d[1] == null) d[1] = x.domain()[1];
+      return d;
+    }))
+  .enter().append("rect")
+    .attr("height", 8)
+    .attr("x", function(d) { return x(d[0]); })
+    .attr("width", function(d) { return x(d[1]) - x(d[0]); })
+    .attr("fill", function(d) { return color(d[0]); });
+    
+    g.append("text")
+    .attr("class", "caption")
+    .attr("x", x.range()[0])
+    .attr("y", -6)
+    .attr("fill", "#000")
+    .attr("text-anchor", "start")
+    .attr("font-weight", "bold")
+    .text("Population per square mile");
+
+g.call(d3.axisBottom(x)
+    .tickSize(13)
+    .tickValues(color.domain()))
+  .select(".domain")
+    .remove();
+    
+    d3.select('#colorButton').on('click', function () {
+if(schemeRed){
+   schemeRed = false;
+   }else{
+    schemeRed = true;   
+   }
+  d3.selectAll("svg > *").remove();
+  ready(error, us);
+});
+                                 
+   d3.select('#countyButton').on('click', function () {
+  if(showCounties){
+   showCounties = false;
+   }else{
+    showCounties = true;   
+   }
+    d3.selectAll("svg > *").remove();
+    ready(error, us);
+});
+
+//this shows the state with the countie lines
+if(showCounties){
+  svg.append("g")
+      .attr("class", "counties")
+    .selectAll("path")
+      .data(topojson.feature(us, us.objects.counties).features)
+    .enter().append("path")
+    .attr("fill",  function(d) { 
+      
+      if(parseInt(+d.id/1000) == 48){
+      return color(densityById.get(d.id)); 
+      }
+  
+  })
+    .attr("d", path)
+      .on('mouseover', function(d) {
+      div
+        .transition()
+        .duration(200)
+        .style('opacity', 0.9);
+      div
+        .html(
+    '<div style="text-align:center">' + nameById.get(d.id) + '</div>' +
+    '<div style="text-align:center">' + "Population per square mile:" + '</div>' +
+    '<div style="text-align:center">' + densityById.get(d.id) + '</div>'
+      )
+        .style('left', d3.event.pageX + 'px')
+        .style('top', d3.event.pageY - 28 + 'px');
+    })
+    //make tooltip dissapear when mouse exits
+    .on('mouseout', function() {
+      div
+        .transition()
+        .duration(500)
+        .style('opacity', 0);
+    });
+}
+    
+    //This will show the state on its own
+    if(!showCounties){
+    svg.append("g")
+      .attr("class", "states")
+    .selectAll("path")
+      .data(topojson.feature(us, us.objects.states).features)
+    .enter().append("path")
+    //.attr("fill",  function(d) { return color(rateById.get(d.id)); })
+    .attr("fill",  function(d) { 
+      
+      if(parseInt(+d.id) == 48){
+      return color(500); 
+      }
+  
+  })
+    .attr("d", path)
+        .on('mouseover', function(d) {
+      div
+        .transition()
+        .duration(200)
+        .style('opacity', 0.9);
+      div
+        .html(
+    '<div style="text-align:center">' + "Texas" + '</div>'
+      )
+        .style('left', d3.event.pageX + 'px')
+        .style('top', d3.event.pageY - 28 + 'px');
+    })
+    //make tooltip dissapear when mouse exits
+    .on('mouseout', function() {
+      div
+        .transition()
+        .duration(500)
+        .style('opacity', 0);
+    });
+}
+    
+      
+/*
+  svg.append("path")
+      .datum(topojson.mesh(us, us.objects.states, function(a, b) { return a !== b; }))
+      .attr("class", "states")
+      .attr("d", path);
+    */
+      
+      
+}
+
+
+</script>
+<h4>
+Steven Lassen <br>
+Instructor: Suresh Lodha <br>
+CMPS 163: Data programming for Visualization <br>
+Fall 2022
+</h4>
